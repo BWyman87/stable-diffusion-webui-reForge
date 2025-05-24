@@ -1009,6 +1009,15 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
 
                 if opts.sd_vae_decode_method != 'Full':
                     p.extra_generation_params['VAE Decoder'] = opts.sd_vae_decode_method
+
+                # --- LANDSCAPE LATENT PATCH START ---
+                from latent_formats import SD15Landscape
+                landscape_format = SD15Landscape(scale_factor=0.18215, aspect_boost=0.08)
+                
+                if hasattr(p, "width") and hasattr(p, "height") and p.width > p.height:
+                    samples_ddim = landscape_format.process_out(samples_ddim)
+                # --- LANDSCAPE LATENT PATCH END ---
+
                 x_samples_ddim = decode_latent_batch(p.sd_model, samples_ddim, target_device=devices.cpu, check_for_nans=True)
 
             x_samples_ddim = torch.stack(x_samples_ddim).float()
