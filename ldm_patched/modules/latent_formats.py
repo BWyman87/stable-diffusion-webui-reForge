@@ -26,6 +26,31 @@ class SD15(LatentFormat):
                 ]
         self.taesd_decoder_name = "taesd_decoder"
 
+class SD15Landscape(SD15):
+    def __init__(self, scale_factor=0.18215, aspect_boost=0.08):
+        super().__init__(scale_factor=scale_factor)
+        self.aspect_boost = aspect_boost
+
+    def process_in(self, latent):
+        # Aspect-aware scaling on encode
+        scale = self._aspect_scale(latent)
+        return latent * scale
+
+    def process_out(self, latent):
+        # Aspect-aware scaling on decode
+        scale = self._aspect_scale(latent)
+        return latent / scale
+
+    def _aspect_scale(self, latent):
+        # If latent has no shape info (e.g., during scripting), default to 1.0
+        if not hasattr(latent, 'shape') or len(latent.shape) < 4:
+            return self.scale_factor
+        _, _, H, W = latent.shape
+        aspect = W / H
+        # Only boost scale for landscape (W > H)
+        return self.scale_factor * (1.0 + self.aspect_boost * max(0, aspect - 1.0))
+
+
 class SDXL(LatentFormat):
     scale_factor = 0.13025
 
