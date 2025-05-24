@@ -1,6 +1,13 @@
 import torch
-
+import torch.nn.functional as F
 from modules import devices, rng_philox, shared
+
+
+def _perlin_noise(shape, device):
+    B, C, H, W = shape
+    lr_H, lr_W = max(1, H//16), max(1, W//16)
+    low = torch.randn(B, C, lr_H, lr_W, device=device)
+    return F.interpolate(low, size=(H, W), mode='bilinear', align_corners=False)
 
 
 def randn(seed, shape, generator=None):
@@ -16,13 +23,22 @@ def randn(seed, shape, generator=None):
     else:
         manual_seed(seed)
 
-    if shared.opts.randn_source == "NV":
-        return torch.asarray((generator or nv_rng).randn(shape), device=devices.device)
-
+    # Choose device
+    device_used = devices.device
     if shared.opts.randn_source == "CPU" or devices.device.type == 'mps':
-        return torch.randn(shape, device=devices.cpu, generator=generator).to(devices.device)
+        device_used = devices.cpu
 
-    return torch.randn(shape, device=devices.device, generator=generator)
+    # Gaussian noise as before
+    gauss = torch.randn(shape, device=device_used, generator=generator)
+    if device_used != devices.device:
+        gauss = gauss.to(devices.device)
+
+    # Blend in Perlin-style noise
+    perc = _perlin_noise(shape, gauss.device)
+    alpha = 0.3  # (30% Perlin, 70% Gaussian)
+    noise = perc * alpha + gauss * (1 - alpha)
+
+    return noise
 
 
 def randn_local(seed, shape):
