@@ -39,7 +39,6 @@ from blendmodes.blend import blendLayers, BlendType
 from modules.sd_models import apply_token_merging
 from modules_forge.forge_util import apply_circular_forge
 
-
 # some of those options should not be changed at all because they would break the model, so I removed them from options.
 opt_C = 4
 opt_f = 8
@@ -1018,7 +1017,23 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                     samples_ddim = landscape_format.process_out(samples_ddim)
                 # --- LANDSCAPE LATENT PATCH END ---
 
-                x_samples_ddim = decode_latent_batch(p.sd_model, samples_ddim, target_device=devices.cpu, check_for_nans=True)
+                # --- Light smoothing anti-artifact filter ---
+                import torch
+                import torch.nn.functional as F
+                kernel_size = 3
+                sigma = 0.6
+                padding = kernel_size // 2
+                grid = torch.arange(kernel_size, dtype=torch.float32) - (kernel_size - 1) / 2.0
+                gauss_1d = torch.exp(-grid**2 / (2*sigma**2))
+                gauss_1d = gauss_1d / gauss_1d.sum()
+                gauss_2d = torch.outer(gauss_1d, gauss_1d)
+                gauss_kernel = gauss_2d[None, None, :, :].repeat(samples_ddim.shape[1], 1, 1, 1).to(samples_ddim.device, samples_ddim.dtype)
+
+                smoothed = F.conv2d(samples_ddim, gauss_kernel, padding=padding, groups=samples_ddim.shape[1])
+                samples_ddim = 0.6 * samples_ddim + 0.4 * smoothed
+                # --- End filter ---
+               
+               x_samples_ddim = decode_latent_batch(p.sd_model, samples_ddim, target_device=devices.cpu, check_for_nans=True)
 
             x_samples_ddim = torch.stack(x_samples_ddim).float()
             x_samples_ddim = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
